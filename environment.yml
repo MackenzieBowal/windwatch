@@ -1,6 +1,8 @@
 name: WW_env
 channels:
   - defaults
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
 dependencies:
   - altair=5.5.0
   - arrow-cpp=19.0.0
@@ -91,6 +93,7 @@ dependencies:
   - pysocks=1.7.1
   - python=3.12.9
   - python-dateutil=2.9.0post0
+  - python-dotenv=0.21.0
   - python-tzdata=2023.3
   - pytz=2024.1
   - re2=2024.07.02
@@ -117,4 +120,6 @@ dependencies:
   - xz=5.6.4
   - zlib=1.2.13
   - zstd=1.5.6
-prefix: /opt/anaconda3/envs/WW_env
+  - pip:
+      - ebird-api==3.4.2
+prefix: /Users/mackenziebowal/miniconda3/envs/WW_env
