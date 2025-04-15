@@ -1,8 +1,10 @@
 import pandas as pd
 import json
+from pyproj import Proj, Transformer
+import geopandas as gpd
 
 
-def process_bird_sighting_data(file_path, file_type, data_type=None):
+def proc_bird_sighting_data(input_path: str, output_path: str) -> pd.DataFrame:
     """
     Reads a CSV or JSON file, processes the data, and returns a cleaned DataFrame.
     """
@@ -18,27 +20,51 @@ def process_bird_sighting_data(file_path, file_type, data_type=None):
                     f"\tCount: {d['howMany']}",
                     "\n")
 
+    # Load data
     try:
-        # Load the data based on file type
-        if file_type == 'csv':
-            data = pd.read_csv(file_path)
-        elif file_type == 'json':
-            with open(file_path, 'r') as f:
-                json_data = json.load(f)
-            data = pd.DataFrame(json_data)
-        else:
-            raise ValueError("Unsupported file type. Use 'csv' or 'json'.")
-
-
-    except Exception as e:
-        print(f"Error processing data: {e}")
-        return None
+        df = pd.read_json(input_path, lines=True)
+    except:
+        print("Error loading file")
+        return
     
-    # Filter data:
-    # - Only keep observations with Lat, Long, Date, and Count attributes
-    # - Lat and Long should be within area used by Wellicome
+    # Fill Nans with 0
+    df["noCount"] = df["noCount"].fillna(0).astype(int)
 
-    
-    
+    # Keep only necessary attributes
+    required_attrs = {"speciesCode", "comName", "sciName", "obsDt", "howMany", "noCount", "lat", "lng"}
 
-    return data
+    for idx, row in df.iterrows():
+        assert required_attrs.issubset(row.keys()), f"Missing keys in row {idx}: {row.to_dict()}"
+
+    proc_df = df[list(required_attrs)]
+
+    # Rename "lng" to "lon" for compatibility with streamlit
+    proc_df = proc_df.rename(columns={"lng": "lon"})
+
+    # TODO: Separate obsDt into date and time (will mostly use date)
+
+    # Filter for area used by Wellicome
+    # Coordinate boundaries:
+    # NW: 52.833333, -114.000000
+    # SW: 49.0000, -114.0000
+    # NE: 52.833333, -110.0000
+    # SE: 49.0000, -110.0000
+
+    lat_min = 49.0000
+    lat_max = 52.833333
+    lon_min = -114.0000
+    lon_max = -110.0000
+
+    proc_df = proc_df[
+        (proc_df["lat"] >= lat_min) & (proc_df["lat"] <= lat_max) &
+        (proc_df["lon"] >= lon_min) & (proc_df["lon"] <= lon_max)
+    ]
+    
+    # Save to file
+    proc_df.to_json(output_path, orient="records", lines=True)
+
+    return proc_df
+
+
+
+
