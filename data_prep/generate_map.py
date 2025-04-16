@@ -7,7 +7,7 @@ import pandas as pd
 def generate_map(bird_data_path: str,
                     map_output_path: str, 
                     coord_range: list[float] = [49.0000, 52.833333, -114.0000, -110.0000],
-                    grid_size: int = 1000):
+                    grid_size: int = 10000): # 100 sq km per grid cell
     
     '''
     grid_size: size of each square in meters
@@ -58,6 +58,8 @@ def generate_map(bird_data_path: str,
 
     # Convert back to WGS84 for display
     final_gdf = grid_gdf.to_crs("EPSG:4326")  
+
+    print(f"gdf size: {final_gdf.shape}")
     
     final_gdf.to_file(map_output_path, driver="GeoJSON")
 
@@ -88,12 +90,12 @@ def generate_map(bird_data_path: str,
     # # Embed the Folium map within Streamlit using streamlit-folium
     # st_folium(folium_map, width=700, height=500)
 
-    ''''''
+    '''driver.py backend stuff'''
 
     # raw_path=DATA_DIR+"raw_bird_sighting_data.jsonl"
     # proc_path=DATA_DIR+"proc_bird_sighting_data.jsonl"
     # map_path=DATA_DIR+"gdf.shp"
 
-    # # get_bird_sighting_data(output_path=raw_path)
-    # # process_bird_sighting_data(input_path=raw_path, proc_output_path=proc_path)
+    # get_bird_sighting_data(output_path=raw_path)
+    # process_bird_sighting_data(input_path=raw_path, proc_output_path=proc_path)
     # gdf = generate_map(bird_data_path=proc_path, map_output_path=map_path)

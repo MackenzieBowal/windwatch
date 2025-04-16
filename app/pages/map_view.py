@@ -7,6 +7,8 @@ def show():
     
     # Get data (cached)
     data = load_folium_map()
+
+    print(f"Data loaded: {data}")
     
     # Display map
     display_folium_map(data)
