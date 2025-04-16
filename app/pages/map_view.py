@@ -1,12 +1,13 @@
 import streamlit as st
 from windwatch.app.utilities import load_folium_map
 from windwatch.app.components.map_display import display_folium_map
+from windwatch.core.map import Map
 
-def show():
+def show(map: Map = None):
     st.header("Bird Sighting Map")
     
     # Get data (cached)
-    data = load_folium_map()
+    data = load_folium_map(map=map)
 
     print(f"Data loaded: {data}")
     

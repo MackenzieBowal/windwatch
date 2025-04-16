@@ -1,6 +1,7 @@
 import streamlit as st
 import geopandas as gpd
 import folium
+from windwatch.core.map import Map
 
 from windwatch.config import DATA_DIR
 
@@ -12,17 +13,21 @@ def load_base_gdf(gdf_path: str = DATA_DIR+"gdf.geojson") -> gpd.GeoDataFrame:
 
 
 # The map itself can't be cached (pickling is weird apparently)
-def load_folium_map(gdf: gpd.GeoDataFrame = None, gdf_path: str = DATA_DIR+"gdf.geojson") -> folium.Map:
-    if gdf is None:
+def load_folium_map(map: Map = None, gdf_path: str = DATA_DIR+"gdf.geojson") -> folium.Map:
+    if map is None:
         gdf = load_base_gdf(gdf_path)
 
-    m = gdf.explore(
-        column="value",
-        cmap="YlOrRd",
-        showLegend=True,
-        k=10,
-        tiles="CartoDB positron"
-    )
+        m = gdf.explore(
+            column="value",
+            cmap="YlOrRd",
+            showLegend=True,
+            k=10,
+            tiles="CartoDB positron"
+        )
+
+    else:
+        m = map.folium_map
+
     return m
 
 
