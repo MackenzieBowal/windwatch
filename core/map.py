@@ -46,6 +46,7 @@ class Map:
         self.folium_map = None
         self.comName = ""
         self.scaler = MinMaxScaler(feature_range=(0, 1))
+        self.bird_radius = 3385 # according to Watson 2020
 
         # Set default coefficients
         self.bird_coefficient = 1
@@ -73,10 +74,11 @@ class Map:
         # TODO: optimize this instead of brute force it hurts
         for i, obs in observations.iterrows():
             point = obs['geometry']
+            # Use a circular buffer for better distribution
+            circle = point.buffer(self.bird_radius)
             for i, row in self.gdf.iterrows():
-                if row['geometry'].contains(point):
+                if circle.intersects(row['geometry']):
                     self.gdf.at[i, 'birdRisk'] += obs['howMany']
-                    break
 
         print(f"gdf: {self.gdf['birdRisk'].head()}")
 
