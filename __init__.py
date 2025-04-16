@@ -1,5 +1,5 @@
 from . import app
-from . import utilities
+from . import data_prep
 from . import config
 
 __version__ = "0.1.0"

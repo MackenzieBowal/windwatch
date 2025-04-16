@@ -10,8 +10,6 @@ import pandas as pd
 #################################
 
 
-
-
 def get_bird_sighting_data(common_name: str | list[str] = "Ferruginous Hawk",
                            scientific_name: str | list[str] = "Buteo regalis",
                            ebird_species_code: str | list[str] = "ferhaw",
