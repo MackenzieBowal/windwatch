@@ -4,12 +4,11 @@ from windwatch.app.components.map_display import display_folium_map
 from windwatch.core.map import Map
 
 def show(map: Map = None):
-    st.header("Bird Sighting Map")
+    print(map.gdf.head())
+    st.header(f"{map.comName} Sighting Map")
     
     # Get data (cached)
     data = load_folium_map(map=map)
-
-    print(f"Data loaded: {data}")
     
     # Display map
     display_folium_map(data)
