@@ -1,9 +1,10 @@
-from ebird.api import get_species_observations, get_historic_observations
+from ebird.api import get_historic_observations
 import os
 from dotenv import load_dotenv
 from datetime import date, timedelta
 import json
-import pandas as pd
+import requests
+import rasterio
 
 #################################
 ''' API calls to data sources '''
@@ -89,14 +90,40 @@ def get_bird_sighting_data(common_name: str | list[str] = "Ferruginous Hawk",
                     json.dump(obs, f)
                     f.write("\n")
 
-            break
-
-
     return all_sightings
 
 
-''' fetch wind speed and direction data '''
+def get_wind_speed_data(country: str = "CAN",
+                        height: int = 100,
+                        output_path: str = None):
+    ''' fetch wind speed data from Global Wind Atlas 
+    Args:
+        country: 3-letter country code (e.g. "CAN" for Canada)
+        height: Wind turbine hub height in meters (50, 100, or 200)
+    Returns:
+    '''
 
+    assert len(country) == 3, "Please enter 3 letter ISO code for country"
+    assert height in [10, 50, 100, 150, 200], "Height must be 10, 50, 100, 150, or 200 meters"
+    assert output_path.endswith(".tif"), "Data should be saved as a .tif file"
+
+    url = f"https://globalwindatlas.info/api/gis/country/{country}/wind-speed/{height}"
+    response = requests.get(url)
+    response.raise_for_status()
+
+    # Save to file in binary (preserves geoTIFF bytes apparently)
+    if output_path:
+        with open(output_path, "wb") as f:
+            f.write(response.content)
+
+    # with rasterio.open(output_path) as src:
+    #     print("CRS:", src.crs)
+    #     print("Bounds:", src.bounds)
+    #     print("Width, Height:", src.width, src.height)
+    #     band1 = src.read(1)  # read the first (and only) band
+    #     print("Array shape:", band1.shape)
+
+    return
 
 ''' fetch terrain slope data '''
 
