@@ -4,7 +4,7 @@ from data_prep.get_data import get_bird_sighting_data, get_wind_speed_data
 from data_prep.process_data import process_bird_sighting_data, process_wind_speed_data
 
 
-proc_path=DATA_DIR+"proc_wind_speed_data.tif"
+proc_path=DATA_DIR+"proc_wind_speed_data.jsonl"
 raw_path=DATA_DIR+"raw_wind_speed_data.tif"
 # raw_path=DATA_DIR+"alberta_rawwspd_100m.tif"
 map_path=DATA_DIR+"gdf.geojson"

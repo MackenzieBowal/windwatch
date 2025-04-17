@@ -1,14 +1,20 @@
 import pandas as pd
+import geopandas as gpd
+from geopandas import GeoDataFrame
+import json
 import rasterio
 from rasterio.mask import mask
-from rasterio.enums import Resampling
-from rasterio.transform import from_origin
-from shapely.geometry import box, mapping
-import os
+from shapely.geometry import box, mapping, Polygon, Point
 
 import numpy as np
 
+from rasterio.transform import xy
+from rasterio.enums import Resampling
+from rasterio.transform import from_origin
 
+
+
+from rasterio.io import MemoryFile
 
 
 
@@ -68,10 +74,8 @@ def process_wind_speed_data(input_path: str,
                             coord_range: list[float] = [49.0000, 52.833333, -114.0000, -110.0000]
                             ) -> pd.DataFrame:
     
-    ''' Expects input .tif file, processes the data, saves the final dataframe to jsonl file. 
+    ''' Expects input .tif file, processes the data, saves it and returns the final dataframe. 
     The final dataframe will contain (lat, lon, wind_speed) in the given coord_range, with 1km resolution.
-
-    proc_output_path should be the .jsonl file, not the .tif file
     '''
 
 
@@ -79,7 +83,8 @@ def process_wind_speed_data(input_path: str,
     lat_min, lat_max, lon_min, lon_max = coord_range
 
 
-    ''' Don't need this lovely code anymore :'( '''
+    # Don't need this anymore :'(
+
     # utm_zone = int(((lon_max + lon_min)/2 + 180) / 6) + 1
     # print(f"{utm_zone=}")
 
@@ -117,13 +122,11 @@ def process_wind_speed_data(input_path: str,
 
     raw_dataset.close()
 
-    temp = "temp.tif"
-
-    with rasterio.open(temp, 'w', **out_meta) as dest:
+    with rasterio.open("temp.tif", 'w', **out_meta) as dest:
         dest.write(out_image)
 
 
-    cropped_dataset = rasterio.open(temp, "r+")
+    cropped_dataset = rasterio.open("temp.tif", "r+")
 
     band = cropped_dataset.read(1)
 
@@ -155,15 +158,14 @@ def process_wind_speed_data(input_path: str,
         'height': height
     })
 
-    # save the processed raster data to a new file
-    with rasterio.open(f"{proc_output_path.split(".")[0]}.tif", 'w', **profile) as final_dataset:
+    # Now we have the final raster dataset. Save lat, lon, and windSpeed values to a jsonl file (consistent with bird data)
+    # Also save the processed raster data to a new file
+    with rasterio.open(proc_output_path, 'r+', **profile) as final_dataset:
         final_dataset.write(data)
 
-    # Now we have the final raster dataset. Save lat, lon, and windSpeed values to a jsonl file (consistent with bird data)
-    # idk exactly why I can't keep going after writing but this works
-    with rasterio.open(f"{proc_output_path.split(".")[0]}.tif", 'r+') as final_dataset:
-        data = final_dataset.read(1)
         transform = final_dataset.transform
+
+        print(f"Data shape: {data.shape}")
 
         # Create geojson from processed raster data
 
@@ -182,11 +184,19 @@ def process_wind_speed_data(input_path: str,
             'windSpeed': flat_data
         })
 
-        df.to_json(proc_output_path, orient='records', lines=True)
+        df.to_json(f"{proc_output_path.split(".")[0]}.jsonl", orient='records', lines=True)
 
-    # Delete intermediate file temp.tif
-    if os.path.exists(temp):
-        os.remove(temp)
+
+
+
+
+
+    # x, y = xy(cropped_dataset.transform, 1, 0)
+    # print(f"{x=}, {y=}")
+
+    # x_res, y_res = cropped_dataset.res
+    # print(f"{x_res=}, {y_res=}")
+
 
 
     return

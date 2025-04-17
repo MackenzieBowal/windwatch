@@ -84,7 +84,7 @@ class Map:
 
         # TODO normalize the column [0,1]
 
-        # self.gdf['birdRisk'] = self.scaler.fit_transform(self.gdf['birdRisk'].values.reshape(-1, 1)).flatten()
+        self.gdf['birdRisk'] = self.scaler.fit_transform(self.gdf['birdRisk'].values.reshape(-1, 1)).flatten()
 
         return
 
