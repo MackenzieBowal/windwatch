@@ -5,7 +5,8 @@ from windwatch.core.map import Map
 
 def show(map: Map = None):
     print(map.gdf.head())
-    st.header(f"{map.comName} Sighting Map")
+    # st.header(f"{map.comName} Sighting Map")
+    st.header(f"Wind Speed Map")
     
     # Get data (cached)
     data = load_folium_map(map=map)
