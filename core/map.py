@@ -54,7 +54,7 @@ class Map:
         self.folium_map = None
         self.comName = ""
         self.scaler = MinMaxScaler(feature_range=(0, 1))
-        self.bird_radius = 3385 # according to Watson 2020
+        self.bird_radius = 30000  #3385 # according to Watson 2020
 
         # Set default coefficients
         self.bird_coefficient = 1
@@ -78,20 +78,50 @@ class Map:
         # Project to UTM CRS
         observations = observations.to_crs(observations.estimate_utm_crs())
 
+        # Set new geometry to circles around each observation instead of points
+        # circle_geometry = [point.buffer(self.bird_radius) for point in observations.geometry]
+        # observations = observations.set_geometry(circle_geometry)
 
-        # TODO: optimize this instead of brute force it hurts
-        for i, obs in observations.iterrows():
-            point = obs['geometry']
-            # Use a circular buffer for better distribution
-            circle = point.buffer(self.bird_radius)
-            for i, row in self.gdf.iterrows():
-                if circle.intersects(row['geometry']):
-                    self.gdf.at[i, 'birdRisk'] += obs['howMany']
+        observations['geometry'] = observations.buffer(self.bird_radius)
 
-        print(f"gdf: {self.gdf['birdRisk'].head()}")
+        observations = observations.to_crs(self.gdf.crs)  # Project back to WGS84
+        observations = observations.rename(columns={'howMany': 'birdRisk'})
 
-        # TODO normalize the column [0,1]
 
+        # Now we can do a spatial join on observations and self.gdf
+        observations_joined = gpd.sjoin(
+            observations,
+            self.gdf[['geometry']],
+            how="inner",
+            predicate="intersects"
+        )
+
+        print(observations_joined.head(10))
+
+        avg_bird_risk = (
+            observations_joined
+            .groupby('index_right')['birdRisk']
+            .sum()
+            .rename('birdRisk')
+        )
+
+        # Add the sum of bird counts to the self.gdf
+        self.gdf = self.gdf.join(avg_bird_risk, how="left")
+
+        self.gdf = self.gdf.fillna({'birdRisk': 0})
+
+        # # TODO: optimize this instead of brute force it hurts
+        # for i, obs in observations.iterrows():
+        #     point = obs['geometry']
+        #     # Use a circular buffer for better distribution
+        #     circle = point.buffer(self.bird_radius)
+        #     for i, row in self.gdf.iterrows():
+        #         if circle.intersects(row['geometry']):
+        #             self.gdf.at[i, 'birdRisk'] += obs['howMany']
+
+
+
+        # normalize the column to [0,1]
         self.gdf['birdRisk'] = self.scaler.fit_transform(self.gdf['birdRisk'].values.reshape(-1, 1)).flatten()
 
         return
@@ -164,24 +194,20 @@ class Map:
                     (x+size, y+size), (x, y+size)
                 ]))
 
-    
-        print(f"y-range: {len(np.arange(ymin, ymax, size))}")
-        print(f"x-range: {len(np.arange(xmin, xmax, size))}")
-
         # Create final grid (in UTM)
         grid_gdf = gpd.GeoDataFrame(geometry=grid_cells, crs=utm_gdf.crs)
 
         self.gdf = grid_gdf
-        
-        # Set up birdRisk gdf from observations
-
-        grid_gdf['birdRisk'] = [0] * len(grid_gdf)
-
-        # Then update bird risk will update the bird risk column based on the current self.gdf
-        # self.__add_bird_risk()
 
         # Convert back to WGS84
         self.gdf = self.gdf.to_crs("EPSG:4326")  
+
+        
+        # Set up birdRisk gdf from observations
+
+        # Then update bird risk will update the bird risk column based on the current self.gdf
+        self.__add_bird_risk()
+
 
         # Set up windSpeed gdf from observations
         self.__add_wind_speed() # wind speed is in WGS84
@@ -200,7 +226,7 @@ class Map:
 
                 
         self.folium_map = self.gdf.explore(
-            column='windSpeed',
+            column='birdRisk',
             cmap='YlOrBr',
             legend=True,
             tooltip=True,
