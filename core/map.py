@@ -56,8 +56,8 @@ class Map:
         self.bird_radius = 30000  #3385 # according to Watson 2020
 
         # Set default coefficients
-        self.bird_risk_coefficient = 1
-        self.wind_speed_coefficient = 1
+        self.bird_risk_coefficient = 50 # 1-100
+        self.wind_speed_coefficient = 50
 
         self.__initialize_map(bird_data_path, wind_speed_data_path)
 
@@ -70,9 +70,12 @@ class Map:
             elif factor == 'windSpeed':
                 self.wind_speed_coefficient = new_coefficients[factor]
 
+        print(f"bird risk coefficient: {self.bird_risk_coefficient}")
+        print(f"wind speed coefficient: {self.wind_speed_coefficient}")
+
         self.gdf['value'] = (
-            self.gdf['windSpeed'] * self.wind_speed_coefficient -
-            self.gdf['birdRisk'] * self.bird_risk_coefficient
+            self.gdf['windSpeed'] * 1 -
+            self.gdf['birdRisk'] * 100
         )
 
         # Normalize the value column to [0,1]
@@ -81,14 +84,19 @@ class Map:
         return None
     
 
-    def change_map_subject(self, new_subject: str):
+    def update_folium_map(self, new_subject: str):
         ''' Changes the folium map subject '''
 
-        print(f"setting subject to {new_subject}")
+        # colormap = cm.LinearColormap(
+        #     colors=['white', 'yellow', 'red'],
+        #     vmin=0,
+        #     vmax=1,
+        # )
+
         
         self.folium_map = self.gdf.explore(
             column=new_subject,
-            cmap='YlOrBr',
+            cmap='YlOrRd', 
             legend=True,
             tooltip=True,
             style_kwds={'fillOpacity': 0.5, 'weight': 0, 'color': None},
@@ -177,9 +185,11 @@ class Map:
         '''
         Generates a GeoDataFrame with the following structure:
         
-        index | birdRisk | windSpeed | value | geometry
+        index | birdRisk | windSpeed | value | pso | geometry
         
         Where the geometry is set to WGS84 coordinates of the grid cell corners (shapely Polygons).
+        birdRis, windSpeed, and value are all normalized [1,0].
+        pso is 1 for yes, include and 0 for no, exclude.
         '''
 
 
@@ -257,16 +267,8 @@ class Map:
         self.calculate_cost_value()
 
         
-        # colormap = cm.LinearColormap(
-        #     colors=['white', 'yellow', 'red', 'black'],
-        #     index=[0.0, 0.5, 8.7, 10.0],
-        #     vmin=0,
-        #     vmax=10,
-        #     caption='Custom Colormap (0 to 1)'
-        # )
-
         # Initialize folium map
-        self.change_map_subject('value')
+        self.update_folium_map('value')
         
         # Save gdf to GeoJSON
         if self.output_path:

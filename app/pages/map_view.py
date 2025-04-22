@@ -2,18 +2,29 @@ import streamlit as st
 from windwatch.app.utilities import load_folium_map
 from windwatch.app.components.map_display import display_folium_map
 from windwatch.core.map import Map
+import numpy as np
 
-if "map_subject" not in st.session_state:
-    st.session_state.map_subject = "value"
 
-if "map_header" not in st.session_state:
-    st.session_state.map_header = "WFSS Value Map"
 
 def show(map: Map = None):
-    # print(map.gdf.head())
+
+    # Set up state
+    if "prev_bird_slider" not in st.session_state:
+        st.session_state.prev_bird_slider = 50
+
+    if "prev_wind_slider" not in st.session_state:
+        st.session_state.prev_wind_slider = 50
+
+    if "map_subject" not in st.session_state:
+        st.session_state.map_subject = "value"
+
+    if "map_header" not in st.session_state:
+        st.session_state.map_header = "Site Value Map"
+
+
     st.header(st.session_state.map_header)
 
-    map.change_map_subject(st.session_state.map_subject)
+    map.update_folium_map(st.session_state.map_subject)
     data = map.folium_map
     display_folium_map(data)
     
@@ -24,38 +35,36 @@ def show(map: Map = None):
                 
         bird_slider = st.select_slider(
             "Bird Impact Risk",
-            options=[1, 2, 3, 4, 5],
-            value=3,
+            options=np.arange(1, 101, 1),
+            value=50,
             key="bird_slider"
         )
         
         wind_slider = st.select_slider(
             "Wind Energy Potential",
-            options=[1, 2, 3, 4, 5],
-            value=3,
+            options=np.arange(1, 101, 1),
+            value=50,
             key="wind_slider"
         )
+
+        if bird_slider != st.session_state.prev_bird_slider:
+            st.session_state.prev_bird_slider = bird_slider
+            map.calculate_cost_value(new_coefficients={"birdRisk": int(bird_slider)})
+
+        if wind_slider != st.session_state.prev_wind_slider:  
+            st.session_state.prev_wind_slider = wind_slider
+            map.calculate_cost_value(new_coefficients={"windSpeed": int(wind_slider)})
         
         # Add some space
         st.markdown("##")
         
-        # col1, col2, col3 = st.columns(3)
-        
-        # with col1:
-        #     birdButton = st.button("Bird Layer", key="btn_bird")
-        
-        # with col2:
-        #     windButton = st.button("Wind Layer", key="btn_wind")
-        
-        # with col3:
-        #     valueButton = st.button("Value Layer", key="btn_value")
 
         selected_layer = st.selectbox(
             "Select map layer",
-            ["Bird Sightings", "Wind Speed", "Best Sites"]
+            ["Site Value", "Bird Risk", "Wind Potential"]
         )
 
-        if selected_layer == "Bird Sightings":
+        if selected_layer == "Bird Risk":
             st.session_state.map_subject = "birdRisk"
             st.session_state.map_header = f"{map.comName} Sighting Map"
 
@@ -63,27 +72,18 @@ def show(map: Map = None):
             st.session_state.map_subject = "windSpeed"
             st.session_state.map_header = "Wind Speed Map"
 
-        elif selected_layer == "Best Sites":
+        elif selected_layer == "Site Value":
             st.session_state.map_subject = "value"
-            st.session_state.map_header = "WFSS Value Map"
+            st.session_state.map_header = "Site Value Map"
 
         st.markdown("##")
 
         PSOButton = st.button("Find Best Sites", key="btn_PSO")
 
+        if PSOButton:
+            # TODO
+            # call function to find PSO
+            # update map with new folium map (1's and 0's)
+            pass
+
         
-        # # Handle button clicks
-        # if birdButton:
-        #     st.session_state.map_subject = "birdRisk"
-        #     st.session_state.map_header = f"{map.comName} Sighting Map"   
-        #     st.rerun()
-            
-        # if windButton:
-        #     st.session_state.map_subject = "windSpeed"
-        #     st.session_state.map_header = "Wind Speed Map"
-        #     st.rerun()
-            
-        # if valueButton:
-        #     st.session_state.map_subject = "value"
-        #     st.session_state.map_header = "WFSS Value Map"
-        #     st.rerun()
