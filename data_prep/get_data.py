@@ -73,7 +73,7 @@ def get_bird_sighting_data(common_name: str | list[str] = "Ferruginous Hawk",
         # Or you can get data from a specific day. Hence the awful loop
         for i in range(0, 10):
             year = 2015 + i
-            start_date = date(year, 9, 17)
+            start_date = date(year, 3, 1)
             end_date = date(year, 10, 31)
             delta = timedelta(days=1)
             current_date = start_date

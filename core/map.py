@@ -16,7 +16,8 @@ class Map:
     - coord_range: list of coordinates [lat_min, lat_max, lon_min, lon_max]
     - boundary: shapely polygon representing the outside edges/corners
     - grid_size: side length of each square in meters
-    - bird_data_path: path to the bird data
+    - bird_risk_gdf: contains the circles around bird observations (only updated if radius changes)
+    - wind_speed_gdf: contains the wind speed observation points (shouldn't have to be updated)
     - output_path: path to store the output GeoDataFrame
     - folium: folium map object
 
@@ -48,8 +49,6 @@ class Map:
             (self.lon_min, self.lat_min)
         ])
         self.grid_size = grid_size
-        self.bird_data_path = bird_data_path
-        self.wind_speed_data_path = wind_speed_data_path
         self.output_path = output_path
         self.folium_map = None
         self.comName = ""
@@ -57,15 +56,135 @@ class Map:
         self.bird_radius = 30000  #3385 # according to Watson 2020
 
         # Set default coefficients
-        self.bird_coefficient = 1
+        self.bird_risk_coefficient = 1
+        self.wind_speed_coefficient = 1
 
-        self.__generate_map()
+        self.__initialize_map(bird_data_path, wind_speed_data_path)
+
+    def calculate_cost_value(self, new_coefficients: dict = {}):
+        ''' Calculates the cost value of each grid cell based on the coefficients '''
+
+        for factor in new_coefficients.keys():
+            if factor == 'birdRisk':
+                self.bird_risk_coefficient = new_coefficients[factor]
+            elif factor == 'windSpeed':
+                self.wind_speed_coefficient = new_coefficients[factor]
+
+        self.gdf['value'] = (
+            self.gdf['windSpeed'] * self.wind_speed_coefficient -
+            self.gdf['birdRisk'] * self.bird_risk_coefficient
+        )
+
+        # Normalize the value column to [0,1]
+        self.gdf['value'] = self.scaler.fit_transform(self.gdf['value'].values.reshape(-1, 1)).flatten()
+    
+        return None
+    
+
+    def change_map_subject(self, new_subject: str):
+        ''' Changes the folium map subject '''
+
+        print(f"setting subject to {new_subject}")
+        
+        self.folium_map = self.gdf.explore(
+            column=new_subject,
+            cmap='YlOrBr',
+            legend=True,
+            tooltip=True,
+            style_kwds={'fillOpacity': 0.5, 'weight': 0, 'color': None},
+        )
+
+        return
+        
+    
 
 
-    def __add_bird_risk(self):
+    def __update_bird_risk(self):
         ''' Adds a birdRisk column to the Map's gdf based on bird observations '''
-        # Load bird data
-        data = pd.read_json(self.bird_data_path, lines=True)
+
+        observations = self.bird_risk_gdf
+        self.gdf = self.gdf.drop(columns=['birdRisk'])
+
+
+        # Now we can do a spatial join on observations and self.gdf
+        observations_joined = gpd.sjoin(
+            observations,
+            self.gdf[['geometry']],
+            how="inner",
+            predicate="intersects"
+        )
+
+        sum_bird_risk = (
+            observations_joined
+            .groupby('index_right')['howMany']
+            .sum()
+            .rename('birdRisk')
+        )
+
+        # Add the sum of bird counts to the self.gdf
+        self.gdf = self.gdf.join(sum_bird_risk, how="left")
+
+        self.gdf = self.gdf.fillna({'birdRisk': 0})
+
+        # normalize the column to [0,1]
+        self.gdf['birdRisk'] = self.scaler.fit_transform(self.gdf['birdRisk'].values.reshape(-1, 1)).flatten()
+
+        return
+    
+    def __update_wind_speed(self):
+        ''' Adds a windSpeed column to the Map's gdf based on wind speeds '''
+
+        observations = self.wind_speed_gdf
+        self.gdf = self.gdf.drop(columns=['windSpeed'])
+
+        # Spatial join to attach each observation to it's grid cell
+        observations_joined = gpd.sjoin(
+            observations,
+            self.gdf[['geometry']],
+            how="inner",
+            predicate="within"
+        )
+        
+        # Series of average wind speeds, indexed the same as self.gdf
+        avg_wind_speed = (
+            observations_joined
+            .groupby('index_right')['windSpeedValue']
+            .mean()
+            .rename('windSpeed')
+        )
+
+        # Add the average wind speeds to the self.gdf
+        self.gdf = self.gdf.join(avg_wind_speed, how="left")
+
+        # There might be null values if some cells are a bit outside the region
+        # Since they're on the borders, they should have a low wind energy potential value anyway (no one wants to build a wind farm there)
+        # Still not the best solution admittedly
+        self.gdf['windSpeed'] = self.gdf['windSpeed'].fillna(self.gdf['windSpeed'].min())
+
+
+        self.gdf['windSpeed'] = self.scaler.fit_transform(self.gdf['windSpeed'].values.reshape(-1, 1)).flatten()
+
+        return
+
+
+    def __update_resolution(self, new_grid_size: int):
+        ''' Updates the grid size of the map '''
+        # TODO - implement this
+        pass
+
+
+    def __initialize_map(self, bird_data_path: str, wind_speed_data_path: str):
+        '''
+        Generates a GeoDataFrame with the following structure:
+        
+        index | birdRisk | windSpeed | value | geometry
+        
+        Where the geometry is set to WGS84 coordinates of the grid cell corners (shapely Polygons).
+        '''
+
+
+        ''' Initialize bird dataframe '''
+        data = pd.read_json(bird_data_path, lines=True)
         self.comName = data["comName"][0]
 
         geometry = [Point(lon, lat) for lon, lat in zip(data['lon'], data['lat'])]
@@ -79,57 +198,15 @@ class Map:
         observations = observations.to_crs(observations.estimate_utm_crs())
 
         # Set new geometry to circles around each observation instead of points
-        # circle_geometry = [point.buffer(self.bird_radius) for point in observations.geometry]
-        # observations = observations.set_geometry(circle_geometry)
-
         observations['geometry'] = observations.buffer(self.bird_radius)
 
-        observations = observations.to_crs(self.gdf.crs)  # Project back to WGS84
-        observations = observations.rename(columns={'howMany': 'birdRisk'})
+        observations = observations.to_crs("EPSG:4326")  # Project back to WGS84
+
+        self.bird_risk_gdf = observations
 
 
-        # Now we can do a spatial join on observations and self.gdf
-        observations_joined = gpd.sjoin(
-            observations,
-            self.gdf[['geometry']],
-            how="inner",
-            predicate="intersects"
-        )
-
-        print(observations_joined.head(10))
-
-        avg_bird_risk = (
-            observations_joined
-            .groupby('index_right')['birdRisk']
-            .sum()
-            .rename('birdRisk')
-        )
-
-        # Add the sum of bird counts to the self.gdf
-        self.gdf = self.gdf.join(avg_bird_risk, how="left")
-
-        self.gdf = self.gdf.fillna({'birdRisk': 0})
-
-        # # TODO: optimize this instead of brute force it hurts
-        # for i, obs in observations.iterrows():
-        #     point = obs['geometry']
-        #     # Use a circular buffer for better distribution
-        #     circle = point.buffer(self.bird_radius)
-        #     for i, row in self.gdf.iterrows():
-        #         if circle.intersects(row['geometry']):
-        #             self.gdf.at[i, 'birdRisk'] += obs['howMany']
-
-
-
-        # normalize the column to [0,1]
-        self.gdf['birdRisk'] = self.scaler.fit_transform(self.gdf['birdRisk'].values.reshape(-1, 1)).flatten()
-
-        return
-    
-    def __add_wind_speed(self):
-        ''' Adds a windSpeed column to the Map's gdf based on wind speeds '''
-
-        data = pd.read_json(self.wind_speed_data_path, lines=True)
+        ''' Initialize wind speed dataframe '''
+        data = pd.read_json(wind_speed_data_path, lines=True)
 
         geometry = [Point(lon, lat) for lon, lat in zip(data['lon'], data['lat'])]
         observations = gpd.GeoDataFrame(
@@ -137,50 +214,16 @@ class Map:
             geometry=geometry,
             crs="EPSG:4326"  # WGS84 coordinate reference system
         )
+        observations = observations.rename(columns={'windSpeed': 'windSpeedValue'})
 
-        # Spatial join to attach each observation to it's grid cell
-        observations_joined = gpd.sjoin(
-            observations,
-            self.gdf[['geometry']],
-            how="inner",
-            predicate="within"
-        )
-        
-        # Series of average wind speeds, indexed the same as self.gdf
-        avg_wind_speed = (
-            observations_joined
-            .groupby('index_right')['windSpeed']
-            .mean()
-            .rename('windSpeed')
-        )
-
-        # Add the average wind speeds to the ' self.gdf
-        self.gdf = self.gdf.join(avg_wind_speed, how="left")
-
-        # There might be null values if some cells are a bit outside the region
-        # Since they're on the borders, they should have a low wind energy potential value anyway (no one wants to build a wind farm there)
-        # Still not the best solution admittedly
-        self.gdf['windSpeed'] = self.gdf['windSpeed'].fillna(self.gdf['windSpeed'].min())
-
-        return
+        self.wind_speed_gdf = observations
 
 
-
-
-
-    def __generate_map(self):
-        '''
-        Generates a GeoDataFrame with the following structure:
-        
-        index | birdRisk | windSpeed | windDirection | terrainSlope | isProtectedArea | geometry
-        
-        Where the geometry is set to WGS84 coordinates.
-        '''
-
+        ''' Now set up the grid (main dataframe) '''
         # wrap boundary in GeoDataFrame, with WGS84 coordinate reference system
         boundary_gdf = gpd.GeoDataFrame(geometry=[self.boundary], crs="EPSG:4326")
         
-        # Project to UTM CRS
+        # Project to UTM to generate meters-based grid cells
         utm_gdf = boundary_gdf.to_crs(boundary_gdf.estimate_utm_crs())
         xmin, ymin, xmax, ymax = utm_gdf.total_bounds
 
@@ -196,42 +239,34 @@ class Map:
 
         # Create final grid (in UTM)
         grid_gdf = gpd.GeoDataFrame(geometry=grid_cells, crs=utm_gdf.crs)
+        # Convert back to WGS84
+        grid_gdf = grid_gdf.to_crs("EPSG:4326")  
 
         self.gdf = grid_gdf
-
-        # Convert back to WGS84
-        self.gdf = self.gdf.to_crs("EPSG:4326")  
-
-        
-        # Set up birdRisk gdf from observations
-
-        # Then update bird risk will update the bird risk column based on the current self.gdf
-        self.__add_bird_risk()
-
-
-        # Set up windSpeed gdf from observations
-        self.__add_wind_speed() # wind speed is in WGS84
-
-
-        # Total cost function value for each grid cell
+        self.gdf['birdRisk'] = [0] * len(grid_gdf)
+        self.gdf['windSpeed'] = [0] * len(grid_gdf)
         self.gdf['value'] = [0] * len(grid_gdf)
 
-        colormap = cm.LinearColormap(
-            colors=['white', 'yellow', 'red', 'black'],
-            index=[0.0, 0.5, 8.7, 10.0],
-            vmin=0,
-            vmax=10,
-            caption='Custom Colormap (0 to 1)'
-        )
+        
+        ''' Join all the dataframes together '''
+        # update bird risk updates the bird risk column based on the current self.gdf
+        self.__update_bird_risk()
 
-                
-        self.folium_map = self.gdf.explore(
-            column='birdRisk',
-            cmap='YlOrBr',
-            legend=True,
-            tooltip=True,
-            style_kwds={'fillOpacity': 0.5, 'weight': 0, 'color': None},
-        )
+        self.__update_wind_speed()
+
+        self.calculate_cost_value()
+
+        
+        # colormap = cm.LinearColormap(
+        #     colors=['white', 'yellow', 'red', 'black'],
+        #     index=[0.0, 0.5, 8.7, 10.0],
+        #     vmin=0,
+        #     vmax=10,
+        #     caption='Custom Colormap (0 to 1)'
+        # )
+
+        # Initialize folium map
+        self.change_map_subject('value')
         
         # Save gdf to GeoJSON
         if self.output_path:
