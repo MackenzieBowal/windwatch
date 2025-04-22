@@ -75,7 +75,7 @@ class Map:
 
         self.gdf['value'] = (
             self.gdf['windSpeed'] * 1 -
-            self.gdf['birdRisk'] * 100
+            self.gdf['birdRisk'] * 1
         )
 
         # Normalize the value column to [0,1]
@@ -104,7 +104,57 @@ class Map:
 
         return
         
-    
+    def run_pso(self, num_particles=30, max_iter=100, w=0.5, c1=1.5, c2=1.5):
+        ''' Runs PSO and populates the 'pso' column of the gdf with 1 for the best location and 0 for others '''
+
+        def get_fitness(pos):
+            # pos is the dataframe index
+            x, y = np.clip(pos.astype(int), [0, 0], [self.cols - 1, self.rows - 1])
+            index = int(y * self.cols + x)
+            return self.gdf["value"].iloc[index]
+        
+        # Initialize particle positions and velocities
+        positions = np.random.rand(num_particles, 2) * [self.cols, self.rows]  # [x, y]
+        velocities = np.random.randn(num_particles, 2)
+
+        # Initialize personal and global bests
+        pBest = positions.copy()
+        pBest_scores = np.array([get_fitness(p) for p in positions])
+        gBest = pBest[np.argmax(pBest_scores)]
+        gBest_score = np.max(pBest_scores)
+
+        # Do pso
+        for _ in range(max_iter):
+            r1, r2 = np.random.rand(2)
+
+            for i in range(num_particles):
+                velocities[i] = (
+                    w * velocities[i]
+                    + c1 * r1 * (pBest[i] - positions[i])
+                    + c2 * r2 * (gBest - positions[i])
+                )
+                positions[i] += velocities[i]
+                positions[i] = np.clip(positions[i], [0, 0], [self.cols - 1, self.rows - 1])
+
+                fitness = get_fitness(positions[i])
+                if fitness > pBest_scores[i]:
+                    pBest[i] = positions[i]
+                    pBest_scores[i] = fitness
+                    if fitness > gBest_score:
+                        gBest = positions[i]
+                        gBest_score = fitness
+
+        best_x = int(gBest[0])
+        best_y = int(gBest[1])
+        best_index = best_y * self.cols + best_x
+        print(f"Best position: {best_x}, {best_y} with score: {gBest_score}")
+
+        # Update the gdf with the best position
+        self.gdf['pso'] = 0
+        self.gdf.loc[best_index, 'pso'] = 1
+        
+        return (best_x, best_y), best_index, gBest_score
+
 
 
     def __update_bird_risk(self):
@@ -192,7 +242,6 @@ class Map:
         pso is 1 for yes, include and 0 for no, exclude.
         '''
 
-
         ''' Initialize bird dataframe '''
         data = pd.read_json(bird_data_path, lines=True)
         self.comName = data["comName"][0]
@@ -237,6 +286,8 @@ class Map:
         utm_gdf = boundary_gdf.to_crs(boundary_gdf.estimate_utm_crs())
         xmin, ymin, xmax, ymax = utm_gdf.total_bounds
 
+
+
         # Generate grid cells
         grid_cells = []
         size = self.grid_size
@@ -247,6 +298,11 @@ class Map:
                     (x+size, y+size), (x, y+size)
                 ]))
 
+        self.rows = int((ymax - ymin) // size + 1)
+        self.cols = int((xmax - xmin) // size + 1)
+
+        print(f"{self.rows=}, {self.cols=}")
+
         # Create final grid (in UTM)
         grid_gdf = gpd.GeoDataFrame(geometry=grid_cells, crs=utm_gdf.crs)
         # Convert back to WGS84
@@ -256,6 +312,7 @@ class Map:
         self.gdf['birdRisk'] = [0] * len(grid_gdf)
         self.gdf['windSpeed'] = [0] * len(grid_gdf)
         self.gdf['value'] = [0] * len(grid_gdf)
+        self.gdf['pso'] = [0] * len(grid_gdf)
 
         
         ''' Join all the dataframes together '''
@@ -266,6 +323,7 @@ class Map:
 
         self.calculate_cost_value()
 
+        self.run_pso()
         
         # Initialize folium map
         self.update_folium_map('value')

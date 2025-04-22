@@ -24,6 +24,8 @@ def show(map: Map = None):
 
     st.header(st.session_state.map_header)
 
+    map.run_pso()
+
     map.update_folium_map(st.session_state.map_subject)
     data = map.folium_map
     display_folium_map(data)
@@ -79,6 +81,11 @@ def show(map: Map = None):
         st.markdown("##")
 
         PSOButton = st.button("Find Best Sites", key="btn_PSO")
+
+        if PSOButton:
+            map.run_pso()
+            st.session_state.map_subject = "pso"
+            st.session_state.map_header = "Best Site"
 
         if PSOButton:
             # TODO
